@@ -11,6 +11,7 @@ import { embedToken, enableConnection, isViaSocketConfigured, revokeConnection, 
 import { computeStreak, dateKey, parseJsonArray } from './lib.js';
 
 const app=express();
+app.set('trust proxy',1);
 const prisma=new PrismaClient();
 const scrypt=promisify(scryptCallback);
 const PORT=Number(process.env.PORT||4000);

@@ -20,4 +20,4 @@ export async function searchApps(term){
 }
 export const listConnections=userId=>viaUser(userId).listConnections();
 export const revokeConnection=(userId,authId)=>viaUser(userId).revokeConnection(authId);
-export const enableConnection=async(userId,serviceId,authId)=>{const user=viaUser(userId);return (await user.findEnabled(serviceId))??(await user.enable(serviceId,authId));};
+export const enableConnection=async(userId,serviceId,authId)=>{const user=viaUser(userId);return (await user.findEnabled(serviceId))??(await user.enable(serviceId,authId)).scriptId;};

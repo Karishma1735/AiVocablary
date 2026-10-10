@@ -5,8 +5,7 @@ set -euo pipefail
 npm run build
 STAGE=$(mktemp -d)
 tar -c --exclude=node_modules --exclude=.git --exclude='.env*' --exclude=package-lock.json --exclude=prisma/dev.db --exclude=prisma/dev.db-journal --exclude=.claude --exclude=deploy . | tar -x -C "$STAGE"
-cp deploy/embarko/start.js "$STAGE/server/start.js"
-sed -i "s#'../server/index.js'#'./index.js'#" "$STAGE/server/start.js"
+cp deploy/embarko/start.js deploy/embarko/migrate-inprocess.js "$STAGE/server/"
 python3 - "$STAGE/package.json" <<'PY'
 import json,sys
 p=sys.argv[1];d=json.load(open(p))

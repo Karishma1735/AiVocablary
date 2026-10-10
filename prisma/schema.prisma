@@ -92,6 +92,10 @@ model DeliveryLog {
   wordId      String
   date        String
   status      String         @default("pending")
+  mode        String         @default("new")
+  cycle       Int            @default(1)
+  dayNumber   Int            @default(0)
+  wordIds     String         @default("[]")
   attempts    Int            @default(0)
   deliveredAt DateTime?
   error       String?
@@ -101,6 +105,7 @@ model DeliveryLog {
   word        VocabularyWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
   @@unique([userId, date])
   @@index([userId, status])
+  @@index([userId, mode, date])
 }
 
 model PracticeSession {

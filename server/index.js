@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import { analyzeAnswer, generateQuestion, generateWord, getAiConfig, verifyAiConnection } from './gemini.js';
 import { createPracticeRouter } from './practice.js';
+import { createDailyEmail } from './dailyEmail.js';
 import { embedToken, enableConnection, isViaSocketConfigured, revokeConnection, searchApps } from './viasocket.js';
 import { computeStreak, dateKey, parseJsonArray } from './lib.js';
 
@@ -14,6 +15,7 @@ const app=express();
 app.set('trust proxy',1);
 const prisma=new PrismaClient();
 const scrypt=promisify(scryptCallback);
+const dailyEmail=createDailyEmail({prisma,generate:avoid=>getAiConfig().apiKey?generateWord(avoid):null});
 const PORT=Number(process.env.PORT||4000);
 const SESSION_COOKIE='vocab_session';
 const SESSION_DAYS=30;
@@ -120,6 +122,9 @@ app.get('/api/integrations/v1/users/:userId/next-word',async(req,res,next)=>{
   res.json({deliveryId:log.id,date:log.date,recipient:user.email,word:parseWord(word)});
  }catch(error){next(error);}
 });
+// Daily email plan: 1 new word/day for 365 days (never repeating), then 10 revision words/day over all learned words, then new words again.
+app.get('/api/integrations/v1/recipients',async(req,res,next)=>{try{const users=await prisma.user.findMany({where:{emailEnabled:true},select:{id:true,email:true}});res.json({recipients:users});}catch(error){next(error);}});
+app.get('/api/integrations/v1/users/:userId/daily-email',async(req,res,next)=>{try{const user=await prisma.user.findUnique({where:{id:req.params.userId}});if(!user)return res.status(404).json({error:'User not found.'});if(!user.emailEnabled)return res.status(409).json({error:'This user has not enabled daily email delivery.'});res.json(await dailyEmail.dailyFor(user));}catch(error){next(error);}});
 app.post('/api/integrations/v1/deliveries/:deliveryId',async(req,res,next)=>{try{const input=z.object({status:z.enum(['sent','failed']),error:z.string().max(300).optional()}).safeParse(req.body);if(!input.success)return res.status(400).json({error:'Status must be sent or failed.'});const log=await prisma.deliveryLog.findUnique({where:{id:req.params.deliveryId}});if(!log)return res.status(404).json({error:'Delivery record not found.'});if(log.status==='sent')return res.json({ok:true,status:'sent',duplicate:true});const updated=await prisma.deliveryLog.update({where:{id:log.id},data:{status:input.data.status,attempts:{increment:1},deliveredAt:input.data.status==='sent'?new Date():null,error:input.data.status==='failed'?(input.data.error||'Delivery failed.'):null}});res.json({ok:true,status:updated.status,duplicate:false});}catch(error){next(error);}});
 
 app.get('/api/health',(req,res)=>res.json({ok:true,aiConfigured:Boolean(getAiConfig().apiKey),model:getAiConfig().model}));

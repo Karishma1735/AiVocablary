@@ -144,3 +144,17 @@ A sidebar page that works as a simple AI conversation. The AI asks a freshly gen
 - Audio playback is not implemented; pronunciation is shown as a readable respelling.
 - Gemini generation, model access and quota require your own server-side key. The starter word library is used as a fallback.
 - Before a public launch, configure persistent database storage, set a strong production session secret, add backups and review the deployment’s operational/security needs.
+
+## Daily vocabulary email (viaSocket)
+
+The server decides *what* to send each day; a viaSocket flow does the scheduling, the Gmail send and the Google Sheet write.
+
+Plan per user: 1 new word a day for 365 days (a word is never repeated), then 10 revision words a day until every learned word has been revised once (read from the store 200 rows at a time), then a new cycle of new words begins.
+
+Set `INTEGRATION_API_KEY` on the server, then the flow calls (header `Authorization: Bearer <INTEGRATION_API_KEY>`):
+
+- `GET /api/integrations/v1/recipients` — users who enabled daily email.
+- `GET /api/integrations/v1/users/:userId/daily-email` — today's email: `subject`, `htmlBody`, `textBody`, `words[]`, and `sheetRows[]` (columns `Word`, `Hindi Meaning`, `English Meaning`, `Use Cases`; only for new words, empty on revision days). Calling it again the same day returns the same words.
+- `POST /api/integrations/v1/deliveries/:deliveryId` with `{ "status": "sent" | "failed" }` — report the result.
+
+Embarko deploy: `bash deploy/embarko/package.sh` builds the upload tarball.

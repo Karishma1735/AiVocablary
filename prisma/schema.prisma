@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String          @id @default(cuid())
+  name         String
+  email        String          @unique
+  passwordHash String
+  emailEnabled Boolean         @default(false)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  sessions     Session[]
+  wordStates   UserWord[]
+  activities   StudyActivity[]
+  deliveries   DeliveryLog[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model VocabularyWord {
+  id            String         @id @default(cuid())
+  word          String         @unique
+  pronunciation String
+  partOfSpeech  String
+  meaning       String
+  hindiMeaning  String
+  synonyms      String         @default("[]")
+  examples      String         @default("[]")
+  source        String         @default("seed")
+  createdAt     DateTime       @default(now())
+  userStates    UserWord[]
+  daily         DailyWord[]
+  deliveries    DeliveryLog[]
+  @@index([createdAt])
+}
+
+model UserWord {
+  id        String         @id @default(cuid())
+  userId    String
+  wordId    String
+  isSaved   Boolean        @default(false)
+  learnedAt DateTime?
+  savedAt   DateTime?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word      VocabularyWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  @@unique([userId, wordId])
+  @@index([userId, isSaved])
+  @@index([userId, learnedAt])
+}
+
+model DailyWord {
+  id        String         @id @default(cuid())
+  date      String         @unique
+  wordId    String
+  createdAt DateTime       @default(now())
+  word      VocabularyWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
+}
+
+model StudyActivity {
+  id           String   @id @default(cuid())
+  userId       String
+  date         String
+  wordsLearned Int      @default(0)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+model DeliveryLog {
+  id          String         @id @default(cuid())
+  userId      String
+  wordId      String
+  date        String
+  status      String         @default("pending")
+  attempts    Int            @default(0)
+  deliveredAt DateTime?
+  error       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word        VocabularyWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  @@unique([userId, date])
+  @@index([userId, status])
+}

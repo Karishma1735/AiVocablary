@@ -35,8 +35,8 @@ detail; fetch the one the task needs rather than trusting a copy.
 
 | `.env` key               | value                                        |
 | ------------------------ | -------------------------------------------- |
-| `VIASOCKET_ORG_ID`       | `<org_id>`                                   |
-| `VIASOCKET_PROJECT_ID`   | `<project_id>`                               |
+| `VIASOCKET_ORG_ID`       | `80251`                                      |
+| `VIASOCKET_PROJECT_ID`   | `proj1pVRqxu9`                               |
 | `VIASOCKET_EMBED_SECRET` | ask the developer; never anywhere but `.env` |
 
 These three values are all this ever needs, and every document reads them by these names. **If an

@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import { analyzeAnswer, generateQuestion, generateWord, getAiConfig, verifyAiConnection } from './gemini.js';
 import { createPracticeRouter } from './practice.js';
+import { embedToken, enableConnection, isViaSocketConfigured, revokeConnection, searchApps } from './viasocket.js';
 import { computeStreak, dateKey, parseJsonArray } from './lib.js';
 
 const app=express();
@@ -73,6 +74,19 @@ app.patch('/api/vocabulary/:wordId/learn',requireUser,async(req,res,next)=>{try{
 app.get('/api/progress',requireUser,async(req,res,next)=>{try{const [totalLearned,streak,activities,recent]=await Promise.all([prisma.userWord.count({where:{userId:req.user.id,learnedAt:{not:null}}}),streakFor(req.user.id),prisma.studyActivity.findMany({where:{userId:req.user.id},orderBy:{date:'desc'},take:7}),prisma.userWord.findMany({where:{userId:req.user.id,learnedAt:{not:null}},include:{word:true},orderBy:{learnedAt:'desc'},take:10})]);res.json({totalLearned,streak,activities:activities.reverse(),recent:recent.map(row=>({word:parseWord(row.word),learnedAt:row.learnedAt}))});}catch(error){next(error);}});
 app.patch('/api/profile',requireUser,async(req,res,next)=>{try{const input=z.object({name:z.string().trim().min(2).max(60),email:emailSchema,emailEnabled:z.boolean()}).safeParse(req.body);if(!input.success)return res.status(400).json({error:input.error.issues[0]?.message||'Please check your profile details.'});const collision=await prisma.user.findFirst({where:{email:input.data.email,id:{not:req.user.id}}});if(collision)return res.status(409).json({error:'That email address is already in use.'});const user=await prisma.user.update({where:{id:req.user.id},data:input.data});res.json({user:safeUser(user)});}catch(error){next(error);}});
 app.post('/api/settings/test-ai',requireUser,authLimiter,async(req,res,next)=>{try{res.json(await verifyAiConnection());}catch(error){next(error);}});
+
+const connectedSchema=z.object({serviceId:z.string().trim().min(1).max(100),serviceName:z.string().trim().max(100).optional(),authId:z.string().trim().min(1).max(200)});
+const publicConnection=row=>({serviceId:row.serviceId,serviceName:row.serviceName,connectedAt:row.createdAt});
+app.get('/api/integrations/status',requireUser,(req,res)=>res.json({configured:isViaSocketConfigured()}));
+app.get('/api/integrations/token',requireUser,async(req,res,next)=>{try{res.type('text/plain').send(await embedToken(req.user.id));}catch(error){next(error);}});
+app.get('/api/integrations/search',requireUser,async(req,res,next)=>{try{res.json(await searchApps(req.query.q));}catch(error){next(error);}});
+app.get('/api/integrations/connections',requireUser,async(req,res,next)=>{try{const rows=await prisma.appConnection.findMany({where:{userId:req.user.id},orderBy:{createdAt:'desc'}});res.json({connections:rows.map(publicConnection)});}catch(error){next(error);}});
+app.post('/api/integrations/connected',requireUser,async(req,res,next)=>{try{const input=connectedSchema.safeParse(req.body);if(!input.success)return res.status(400).json({error:'Invalid connection details.'});const {serviceId,serviceName,authId}=input.data;
+ // script_id is only needed to run actions; it stays server-side. Enabling failure must not lose the connection.
+ let scriptId=null;try{scriptId=await enableConnection(req.user.id,serviceId,authId);}catch(error){console.error('viaSocket enable failed:',error?.message||error);}
+ const row=await prisma.appConnection.upsert({where:{userId_serviceId:{userId:req.user.id,serviceId}},create:{userId:req.user.id,serviceId,serviceName:serviceName||serviceId,authId,scriptId},update:{authId,scriptId,...(serviceName?{serviceName}:{})}});
+ res.status(201).json({connection:publicConnection(row)});}catch(error){next(error);}});
+app.delete('/api/integrations/connections/:serviceId',requireUser,async(req,res,next)=>{try{const row=await prisma.appConnection.findUnique({where:{userId_serviceId:{userId:req.user.id,serviceId:req.params.serviceId}}});if(!row)return res.status(404).json({error:'Connection not found.'});await revokeConnection(req.user.id,row.authId);await prisma.appConnection.delete({where:{id:row.id}});res.json({ok:true});}catch(error){next(error);}});
 
 const practiceLimiter=rateLimit({windowMs:60*1000,limit:20,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Too many requests. Please wait a minute and try again.'}});
 app.use('/api/practice',createPracticeRouter({prisma,requireUser,analyze:analyzeAnswer,ask:generateQuestion,isConfigured:()=>Boolean(getAiConfig().apiKey),limiter:practiceLimiter}));

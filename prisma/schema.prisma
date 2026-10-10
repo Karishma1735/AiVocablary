@@ -20,6 +20,7 @@ model User {
   activities       StudyActivity[]
   deliveries       DeliveryLog[]
   practiceSessions PracticeSession[]
+  appConnections   AppConnection[]
 }
 
 model Session {
@@ -112,4 +113,17 @@ model PracticeSession {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId, createdAt])
+}
+
+model AppConnection {
+  id          String   @id @default(cuid())
+  userId      String
+  serviceId   String
+  serviceName String
+  authId      String
+  scriptId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, serviceId])
 }

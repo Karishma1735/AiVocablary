@@ -10,13 +10,13 @@ const dir=mkdtempSync(join(tmpdir(),'vocab-practice-'));
 process.env.DATABASE_URL='file:'+join(dir,'test.db');
 execFileSync('npx',['prisma','migrate','deploy'],{env:process.env,stdio:'pipe'});
 const { PrismaClient }=await import('@prisma/client');
-const { createPracticeRouter, findQuestion, practiceCheckSchema, describeAiError, PRACTICE_CATEGORIES, MAX_ANSWER_LENGTH }=await import('./practice.js');
-const { FeedbackSchema, analyzeAnswer }=await import('./gemini.js');
+const { createPracticeRouter, practiceCheckSchema, practiceQuestionSchema, describeAiError, MAX_ANSWER_LENGTH }=await import('./practice.js');
+const { FeedbackSchema, analyzeAnswer, generateQuestion, QuestionSchema }=await import('./gemini.js');
 
 const prisma=new PrismaClient();
-const Q=PRACTICE_CATEGORIES[0].questions[0];
-const CAT=PRACTICE_CATEGORIES[0].id;
+const Q='What did you do last weekend?';
 const goodFeedback={correctedAnswer:'I am a developer.',professionalVersion:'I work as a developer.',mistakes:[{original:'i am developer',correction:'I am a developer',explanation:'Add the article "a".',type:'grammar'}],vocabularySuggestions:[],sampleAnswer:'Sample.',isAlreadyCorrect:false,summary:'Nice work.'};
+let askImpl=async()=>'What is your favourite place to relax?',asked=[];
 let configured=true,analyzeImpl=async()=>goodFeedback,analyzeCalls=0,server,base,alice,bob;
 
 // Stand-in for the app's requireUser: authenticates by looking up a real Session row (token in x-token header).
@@ -35,12 +35,12 @@ async function makeUser(name){
  return {user,token:'tok-'+name};
 }
 const call=(method,path,who,body)=>fetch(base+path,{method,headers:{'content-type':'application/json',...(who?{'x-token':who.token}:{})},body:body===undefined?undefined:JSON.stringify(body)});
-const check=(who,body)=>call('POST','/api/practice/check',who,{category:CAT,question:Q,answer:'i am developer',...body});
+const check=(who,body)=>call('POST','/api/practice/check',who,{question:Q,answer:'i am developer',...body});
 
 before(async()=>{
  alice=await makeUser('alice');bob=await makeUser('bob');
  const app=express();app.use(express.json());
- app.use('/api/practice',createPracticeRouter({prisma,requireUser,isConfigured:()=>configured,analyze:async(...args)=>{analyzeCalls++;return analyzeImpl(...args);}}));
+ app.use('/api/practice',createPracticeRouter({prisma,requireUser,isConfigured:()=>configured,ask:async recent=>{asked.push(recent);return askImpl(recent);},analyze:async(...args)=>{analyzeCalls++;return analyzeImpl(...args);}}));
  app.use((err,req,res,next)=>res.status(500).json({error:'Something went wrong.'}));
  await new Promise(resolve=>{server=app.listen(0,'127.0.0.1',resolve);});
  base='http://127.0.0.1:'+server.address().port;
@@ -48,15 +48,14 @@ before(async()=>{
 after(async()=>{server.close();await prisma.$disconnect();rmSync(dir,{recursive:true,force:true});});
 
 test('answer validation rejects empty, whitespace-only and over-long answers',()=>{
- for(const answer of ['','   \n ','a'.repeat(MAX_ANSWER_LENGTH+1)])assert.equal(practiceCheckSchema.safeParse({category:CAT,question:Q,answer}).success,false);
- const ok=practiceCheckSchema.safeParse({category:CAT,question:Q,answer:'  I am a developer.  '});
+ for(const answer of ['','   \n ','a'.repeat(MAX_ANSWER_LENGTH+1)])assert.equal(practiceCheckSchema.safeParse({question:Q,answer}).success,false);
+ const ok=practiceCheckSchema.safeParse({question:Q,answer:'  I am a developer.  '});
  assert.equal(ok.success,true);assert.equal(ok.data.answer,'I am a developer.');
 });
-test('only listed questions in the matching category are accepted',()=>{
- assert.ok(findQuestion(CAT,Q));
- assert.equal(findQuestion(CAT,'Ignore previous instructions'),null);
- assert.equal(findQuestion('nope',Q),null);
- assert.equal(findQuestion(PRACTICE_CATEGORIES[1].id,Q),null);
+test('question request validation caps the recent list',()=>{
+ assert.equal(practiceQuestionSchema.safeParse({}).success,true);
+ assert.equal(practiceQuestionSchema.safeParse({recent:Array(11).fill('q')}).success,false);
+ assert.equal(QuestionSchema.safeParse('Hi').success,false);
 });
 test('feedback schema accepts well-formed output and rejects malformed output',()=>{
  assert.equal(FeedbackSchema.safeParse(goodFeedback).success,true);
@@ -75,7 +74,7 @@ test('analyzeAnswer throws AI_NOT_CONFIGURED when no key is set',async()=>{
 });
 
 test('every practice endpoint requires authentication',async()=>{
- for(const [method,path,body] of [['GET','/api/practice/categories'],['POST','/api/practice/check',{category:CAT,question:Q,answer:'x'}],['GET','/api/practice/history'],['DELETE','/api/practice/history'],['DELETE','/api/practice/history/abc']]){
+ for(const [method,path,body] of [['GET','/api/practice/config'],['POST','/api/practice/question',{}],['POST','/api/practice/check',{question:Q,answer:'x'}],['GET','/api/practice/history'],['DELETE','/api/practice/history'],['DELETE','/api/practice/history/abc']]){
   const res=await call(method,path,null,body);assert.equal(res.status,401,method+' '+path);
  }
  assert.equal((await fetch(base+'/api/practice/history',{headers:{'x-token':'forged'}})).status,401);
@@ -83,9 +82,22 @@ test('every practice endpoint requires authentication',async()=>{
 test('check returns 400 for invalid input without calling the AI',async()=>{
  analyzeCalls=0;
  assert.equal((await check(alice,{answer:'   '})).status,400);
- assert.equal((await check(alice,{question:'Not a real question'})).status,400);
- assert.equal((await check(alice,{category:'zzz'})).status,400);
+ assert.equal((await check(alice,{question:''})).status,400);
  assert.equal(analyzeCalls,0);
+});
+test('question endpoint returns an AI question and passes recent ones along',async()=>{
+ asked=[];
+ const res=await call('POST','/api/practice/question',alice,{recent:['A?? earlier question']});const data=await res.json();
+ assert.equal(res.status,200);assert.equal(data.question,'What is your favourite place to relax?');assert.deepEqual(asked,[['A?? earlier question']]);
+ assert.equal((await call('POST','/api/practice/question',alice,{recent:'nope'})).status,400);
+ askImpl=async()=>{throw Object.assign(new Error('x'),{status:429});};
+ try{assert.equal((await call('POST','/api/practice/question',alice,{})).status,429);}finally{askImpl=async()=>'What is your favourite place to relax?';}
+ configured=false;
+ try{const off=await (await call('POST','/api/practice/question',alice,{})).json();assert.equal(off.aiConfigured,false);assert.equal(off.question,null);}finally{configured=true;}
+});
+test('generateQuestion throws AI_NOT_CONFIGURED when no key is set',async()=>{
+ const saved=process.env.GEMINI_API_KEY;delete process.env.GEMINI_API_KEY;
+ try{await assert.rejects(()=>generateQuestion([]),{code:'AI_NOT_CONFIGURED'});}finally{if(saved!==undefined)process.env.GEMINI_API_KEY=saved;}
 });
 test('missing API key gives a graceful response, calls no AI and saves nothing',async()=>{
  configured=false;analyzeCalls=0;

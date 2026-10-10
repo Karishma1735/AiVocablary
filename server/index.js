@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { randomBytes, createHash, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { analyzeAnswer, generateWord, getAiConfig, verifyAiConnection } from './gemini.js';
+import { analyzeAnswer, generateQuestion, generateWord, getAiConfig, verifyAiConnection } from './gemini.js';
 import { createPracticeRouter } from './practice.js';
 import { computeStreak, dateKey, parseJsonArray } from './lib.js';
 
@@ -65,8 +65,8 @@ app.get('/api/progress',requireUser,async(req,res,next)=>{try{const [totalLearne
 app.patch('/api/profile',requireUser,async(req,res,next)=>{try{const input=z.object({name:z.string().trim().min(2).max(60),email:emailSchema,emailEnabled:z.boolean()}).safeParse(req.body);if(!input.success)return res.status(400).json({error:input.error.issues[0]?.message||'Please check your profile details.'});const collision=await prisma.user.findFirst({where:{email:input.data.email,id:{not:req.user.id}}});if(collision)return res.status(409).json({error:'That email address is already in use.'});const user=await prisma.user.update({where:{id:req.user.id},data:input.data});res.json({user:safeUser(user)});}catch(error){next(error);}});
 app.post('/api/settings/test-ai',requireUser,authLimiter,async(req,res,next)=>{try{res.json(await verifyAiConnection());}catch(error){next(error);}});
 
-const practiceLimiter=rateLimit({windowMs:60*1000,limit:8,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Too many answer checks. Please wait a minute and try again.'}});
-app.use('/api/practice',createPracticeRouter({prisma,requireUser,analyze:analyzeAnswer,isConfigured:()=>Boolean(getAiConfig().apiKey),limiter:practiceLimiter}));
+const practiceLimiter=rateLimit({windowMs:60*1000,limit:20,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Too many requests. Please wait a minute and try again.'}});
+app.use('/api/practice',createPracticeRouter({prisma,requireUser,analyze:analyzeAnswer,ask:generateQuestion,isConfigured:()=>Boolean(getAiConfig().apiKey),limiter:practiceLimiter}));
 
 app.use('/api/integrations/v1',integrationLimiter,requireIntegration);
 app.get('/api/integrations/v1/users/:userId',async(req,res,next)=>{try{const user=await prisma.user.findUnique({where:{id:req.params.userId}});if(!user)return res.status(404).json({error:'User not found.'});res.json({id:user.id,email:user.email,deliveryPreferences:{enabled:user.emailEnabled}});}catch(error){next(error);}});

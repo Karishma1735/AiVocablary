@@ -128,11 +128,11 @@ A unique database constraint on user and date prevents duplicate delivery record
 
 ## Practice & Improve
 
-A sidebar page where learners answer professional-English questions (typed or spoken) and get AI feedback: corrected answer, a more natural version, explained mistakes, vocabulary suggestions and an optional sample answer. Corrections (grammar/spelling) are labelled separately from optional style changes, and the prompt forbids inventing facts or experience.
+A sidebar page that works as a simple AI conversation. The AI asks a freshly generated, random question (no predefined list; recent questions are sent back so it doesn't repeat). The learner answers by microphone or text, and the AI replies in the chat with the corrected version, an optional more natural version and the explained mistakes, then asks the next question. Corrections (grammar/spelling) are labelled separately from optional style changes, and the prompt forbids inventing facts or experience.
 
-**Configuration:** set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) in the server environment only. Run `npx prisma migrate deploy` (or `npm run db:setup`) to apply the `PracticeSession` migration. Without a key the page still loads, questions and typing work, and "Check my answer" is disabled with an explanation; the API replies `aiConfigured: false`.
+**Configuration:** set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) in the server environment only. Run `npx prisma migrate deploy` (or `npm run db:setup`) to apply the `PracticeSession` migration. Without a key the page still loads and explains that the AI conversation isn't set up; the API replies `aiConfigured: false`.
 
-**API (all require a signed-in session):** `GET /api/practice/categories`, `POST /api/practice/check` (8/min limit), `GET /api/practice/history`, `DELETE /api/practice/history/:id`, `DELETE /api/practice/history`. Gemini output is parsed and validated with Zod; bad output returns 502, rate limits 429.
+**API (all require a signed-in session):** `GET /api/practice/config`, `POST /api/practice/question` and `POST /api/practice/check` (20/min limit, shared), `GET /api/practice/history`, `DELETE /api/practice/history/:id`, `DELETE /api/practice/history`. Gemini output is parsed and validated with Zod; bad output returns 502, rate limits 429.
 
 **Microphone:** uses the browser Web Speech API (`SpeechRecognition`/`webkitSpeechRecognition`), needs https or localhost, and the mic button only appears when the browser supports it. Recognition is done by the browser vendor's service (it may send audio to them); VocabRise never records or stores audio. Typing always works.
 

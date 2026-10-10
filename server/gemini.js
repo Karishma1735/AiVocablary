@@ -25,6 +25,19 @@ export async function analyzeAnswer(question,answer){
  const parsed=FeedbackSchema.safeParse(data);if(!parsed.success)throw Object.assign(new Error('Gemini returned feedback in an unexpected format.'),{code:'AI_BAD_RESPONSE'});
  return parsed.data;
 }
+export const QuestionSchema=z.string().trim().min(10).max(300);
+export async function generateQuestion(recent=[]){
+ const {apiKey,model}=getAiConfig();
+ if(!apiKey)throw Object.assign(new Error('Gemini is not configured.'),{code:'AI_NOT_CONFIGURED'});
+ const ai=new GoogleGenAI({apiKey});
+ const avoid=recent.length?`\n\nQuestions already asked in this conversation (do not repeat or closely rephrase any of them, and pick a clearly different topic):\n${recent.map(item=>'- '+JSON.stringify(item)).join('\n')}`:'';
+ const prompt=`You are a friendly English conversation partner helping a professional learner in India practise speaking and writing English. Ask ONE new, random, open-ended question that invites a short answer of 2-4 sentences. Vary the topic widely: work, daily life, opinions, memories, plans, hypotheticals, hobbies, people, places, food, technology, travel and so on. Keep it natural, in simple clear English, under 25 words. Random seed for variety: ${Math.random().toString(36).slice(2,10)}.${avoid}\n\nReturn only the question text. No quotes, no markdown, no preamble.`;
+ const response=await ai.models.generateContent({model,contents:prompt,config:{temperature:1.3}});
+ const text=(response.text||'').trim().replaceAll(fence,'').replace(/^["'“”]+|["'“”]+$/g,'').trim();
+ const parsed=QuestionSchema.safeParse(text);
+ if(!parsed.success)throw Object.assign(new Error('Gemini returned an unusable question.'),{code:'AI_BAD_RESPONSE'});
+ return parsed.data;
+}
 export async function verifyAiConnection(){
  const {apiKey,model}=getAiConfig();
  if(!apiKey)return {ok:false,model,message:'Add GEMINI_API_KEY in the server environment, then test again.'};

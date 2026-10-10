@@ -53,9 +53,18 @@ async function getTodayWord(){
  try{const daily=await prisma.dailyWord.create({data:{date:today,wordId:word.id},include:{word:true}});return {daily,aiFallback};}
  catch(error){if(error?.code==='P2002'){const daily=await prisma.dailyWord.findUnique({where:{date:today},include:{word:true}});if(daily)return {daily,aiFallback};}throw error;}
 }
+async function refreshTodayWord(){
+ const today=dateKey();
+ let content=null;
+ if(getAiConfig().apiKey){try{content=await generateWord();}catch(error){console.error('Word generation failed:',error?.message||error);}}
+ if(!content)return;
+ const word=await prisma.vocabularyWord.upsert({where:{word:content.word.toLowerCase()},update:{},create:{...content,word:content.word.toLowerCase()}});
+ await prisma.dailyWord.upsert({where:{date:today},update:{wordId:word.id},create:{date:today,wordId:word.id}});
+}
 async function currentWordForUser(userId){const {daily,aiFallback}=await getTodayWord();const state=await prisma.userWord.findUnique({where:{userId_wordId:{userId,wordId:daily.wordId}}});return {word:parseWord(daily.word),isSaved:state?.isSaved||false,learnedAt:state?.learnedAt||null,aiFallback};}
 async function streakFor(userId){const rows=await prisma.studyActivity.findMany({where:{userId,wordsLearned:{gt:0}},select:{date:true},orderBy:{date:'desc'},take:370});return computeStreak(rows.map(row=>row.date));}
 
+app.post('/api/vocabulary/refresh',requireUser,async(req,res,next)=>{try{await refreshTodayWord();res.json(await currentWordForUser(req.user.id));}catch(error){next(error);}});
 app.get('/api/vocabulary/today',requireUser,async(req,res,next)=>{try{res.json(await currentWordForUser(req.user.id));}catch(error){next(error);}});
 app.get('/api/dashboard',requireUser,async(req,res,next)=>{try{const [today,totalLearned,savedCount,recent,streak]=await Promise.all([currentWordForUser(req.user.id),prisma.userWord.count({where:{userId:req.user.id,learnedAt:{not:null}}}),prisma.userWord.count({where:{userId:req.user.id,isSaved:true}}),prisma.userWord.findMany({where:{userId:req.user.id,learnedAt:{not:null}},include:{word:true},orderBy:{learnedAt:'desc'},take:4}),streakFor(req.user.id)]);res.json({today,totalLearned,savedCount,streak,recent:recent.map(row=>({word:parseWord(row.word),learnedAt:row.learnedAt}))});}catch(error){next(error);}});
 app.get('/api/vocabulary/saved',requireUser,async(req,res,next)=>{try{const rows=await prisma.userWord.findMany({where:{userId:req.user.id,isSaved:true},include:{word:true},orderBy:{savedAt:'desc'}});res.json({words:rows.map(row=>({word:parseWord(row.word),learnedAt:row.learnedAt,savedAt:row.savedAt}))});}catch(error){next(error);}});

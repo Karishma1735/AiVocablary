@@ -13,7 +13,7 @@ export async function generateWord(){
  const parsed=WordSchema.safeParse(data); if(!parsed.success) throw Object.assign(new Error('Gemini returned vocabulary in an unexpected format.'),{code:'AI_BAD_RESPONSE'});
  return {...parsed.data,synonyms:JSON.stringify(parsed.data.synonyms),examples:JSON.stringify(parsed.data.examples),source:'gemini'};
 }
-export const FeedbackSchema=z.object({correctedAnswer:z.string().min(1).max(2000),professionalVersion:z.string().min(1).max(2000),mistakes:z.array(z.object({original:z.string().max(200),correction:z.string().max(200),explanation:z.string().max(400),type:z.enum(['grammar','spelling','vocabulary','style'])})).max(8),vocabularySuggestions:z.array(z.object({word:z.string().max(60),suggestion:z.string().max(200)})).max(5),sampleAnswer:z.string().max(2000),isAlreadyCorrect:z.boolean(),summary:z.string().max(400)});
+export const FeedbackSchema=z.object({correctedAnswer:z.string().min(1).max(2000),professionalVersion:z.string().min(1).max(2000),mistakes:z.array(z.object({original:z.string().max(600),correction:z.string().max(600),explanation:z.string().max(600),type:z.enum(['grammar','spelling','vocabulary','style'])})).max(8),vocabularySuggestions:z.array(z.object({word:z.string().max(60),suggestion:z.string().max(400)})).max(5),sampleAnswer:z.string().max(2000),isAlreadyCorrect:z.boolean(),summary:z.string().max(600)});
 export async function analyzeAnswer(question,answer){
  const {apiKey,model}=getAiConfig();
  if(!apiKey)throw Object.assign(new Error('Gemini is not configured.'),{code:'AI_NOT_CONFIGURED'});

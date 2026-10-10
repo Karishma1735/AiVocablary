@@ -8,17 +8,18 @@ datasource db {
 }
 
 model User {
-  id           String          @id @default(cuid())
-  name         String
-  email        String          @unique
-  passwordHash String
-  emailEnabled Boolean         @default(false)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  sessions     Session[]
-  wordStates   UserWord[]
-  activities   StudyActivity[]
-  deliveries   DeliveryLog[]
+  id               String            @id @default(cuid())
+  name             String
+  email            String            @unique
+  passwordHash     String
+  emailEnabled     Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sessions         Session[]
+  wordStates       UserWord[]
+  activities       StudyActivity[]
+  deliveries       DeliveryLog[]
+  practiceSessions PracticeSession[]
 }
 
 model Session {
@@ -99,4 +100,16 @@ model DeliveryLog {
   word        VocabularyWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
   @@unique([userId, date])
   @@index([userId, status])
+}
+
+model PracticeSession {
+  id        String   @id @default(cuid())
+  userId    String
+  category  String
+  question  String
+  answer    String
+  feedback  String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
 }

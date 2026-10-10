@@ -126,6 +126,18 @@ A unique database constraint on user and date prevents duplicate delivery record
 - <code>prisma/migrations</code> — versioned database migrations.
 - <code>prisma/seed.js</code> — starter business-English words.
 
+## Practice & Improve
+
+A sidebar page where learners answer professional-English questions (typed or spoken) and get AI feedback: corrected answer, a more natural version, explained mistakes, vocabulary suggestions and an optional sample answer. Corrections (grammar/spelling) are labelled separately from optional style changes, and the prompt forbids inventing facts or experience.
+
+**Configuration:** set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) in the server environment only. Run `npx prisma migrate deploy` (or `npm run db:setup`) to apply the `PracticeSession` migration. Without a key the page still loads, questions and typing work, and "Check my answer" is disabled with an explanation; the API replies `aiConfigured: false`.
+
+**API (all require a signed-in session):** `GET /api/practice/categories`, `POST /api/practice/check` (8/min limit), `GET /api/practice/history`, `DELETE /api/practice/history/:id`, `DELETE /api/practice/history`. Gemini output is parsed and validated with Zod; bad output returns 502, rate limits 429.
+
+**Microphone:** uses the browser Web Speech API (`SpeechRecognition`/`webkitSpeechRecognition`), needs https or localhost, and the mic button only appears when the browser supports it. Recognition is done by the browser vendor's service (it may send audio to them); VocabRise never records or stores audio. Typing always works.
+
+**History:** only saved when the "Save my practice" checkbox is on (default on, remembered in the browser). Entries are scoped to the signed-in user and can be deleted individually or all at once.
+
 ## Current MVP boundaries
 
 - Daily email sending and viaSocket workflows are intentionally not implemented.
